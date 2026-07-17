@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -eE
+
 _red() {
     printf "\033[31m%b\033[0m\n" "$*"
 }
