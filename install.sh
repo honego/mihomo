@@ -38,3 +38,26 @@ _err_msg() {
 _warn_msg() {
     _alert_msg "警告" "$*"
 }
+
+die() {
+    _err_msg "$(_red "$*")" >&2
+    exit 1
+}
+
+get_cmd_path() {
+    # arch 云镜像不带 which
+    # command -v 包括脚本里面的方法
+    # ash 无效
+    type -f -p "$1"
+}
+
+is_have_cmd() {
+    get_cmd_path "$1" > /dev/null 2>&1
+}
+
+## mihomo 安装脚本入口
+
+# 检查 root
+if ((EUID != 0)); then
+    die "请使用 root 用户运行此脚本."
+fi
