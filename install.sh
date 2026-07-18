@@ -46,6 +46,26 @@ die() {
     exit 1
 }
 
+curl() {
+    local rc
+
+    # 添加 -f --fail 不然 404 退出码也为 0
+    # 32位 cygwin 已停止更新 证书可能有问题 添加 --insecure
+    # centos7 curl 不支持 --retry-connrefused --retry-all-errors 因此手动 retry
+    for ((i = 1; i <= 5; i++)); do
+        if command curl --connect-timeout 10 --fail --insecure "$@"; then
+            return
+        else
+            rc="$?"
+            # 403 404 错误 或达到重试次数
+            if [ "$rc" -eq 22 ] || [ "$i" -eq 5 ]; then
+                return "$rc"
+            fi
+            sleep 1
+        fi
+    done
+}
+
 get_cmd_path() {
     # arch 云镜像不带 which
     # command -v 包括脚本里面的方法
