@@ -54,6 +54,12 @@ PROJECT_BIN="$PROJECT_DIR/bin"
 SCRIPT_DIR="$PROJECT_DIR/sh"
 # shellcheck disable=SC2034
 
+# 缓存已识别的包管理器
+PKG_MGR=""
+
+# 避免重复更新软件包索引
+APT_UPDATED=""
+
 die() {
     _err_msg "$(_red "$*")" >&2
     exit 1
@@ -71,9 +77,12 @@ is_have_cmd() {
 }
 
 install_pkg() {
+    local cmd
+
     find_pkg_mgr() {
-        # 启用 set -u 报错
-        [ -n "$pkg_mgr" ] && return
+        local id mgr
+
+        [ -n "$PKG_MGR" ] && return
 
         # 查找方法 1: 通过 ID / ID_LIKE
         # 因为可能装了多种包管理器
@@ -85,17 +94,17 @@ install_pkg() {
                 echo "$ID $ID_LIKE"
             ); do
                 case "$id" in
-                alpine) pkg_mgr=apk ;;
-                centos | fedora | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
-                debian | ubuntu) pkg_mgr=apt-get ;;
+                alpine) PKG_MGR=apk ;;
+                centos | fedora | rhel) is_have_cmd dnf && PKG_MGR=dnf || PKG_MGR=yum ;;
+                debian | ubuntu) PKG_MGR=apt-get ;;
                 esac
-                [ -n "$pkg_mgr" ] && return
+                [ -n "$PKG_MGR" ] && return
             done
         fi
 
         # 查找方法 2
         for mgr in apk apt-get dnf yum; do
-            is_have_cmd "$mgr" && pkg_mgr="$mgr" && return
+            is_have_cmd "$mgr" && PKG_MGR="$mgr" && return
         done
 
         return 1
@@ -106,16 +115,16 @@ install_pkg() {
 
         pkg="$1"
 
-        case "$pkg_mgr" in
+        case "$PKG_MGR" in
         apk)
             apk add --no-cache "$pkg"
             ;;
         apt-get)
-            [ -z "$apt_updated" ] && apt-get update && apt_updated=1
+            [ -z "$APT_UPDATED" ] && apt-get update && APT_UPDATED="1"
             DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$pkg"
             ;;
         dnf | yum)
-            eval "$pkg_mgr" install -y "$pkg"
+            "$PKG_MGR" install -y "$pkg"
             ;;
         esac
     }
