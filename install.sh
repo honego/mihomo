@@ -52,7 +52,8 @@ PROJECT_DIR="/etc/$PROJECT"
 PROJECT_BIN="$PROJECT_DIR/bin"
 # shellcheck disable=SC2034
 SCRIPT_DIR="$PROJECT_DIR/sh"
-# shellcheck disable=SC2034
+
+OS_ARCH="$(uname -m 2> /dev/null)"
 
 # 缓存已识别的包管理器
 PKG_MGR=""
@@ -74,6 +75,11 @@ get_cmd_path() {
 
 is_have_cmd() {
     get_cmd_path "$1" > /dev/null 2>&1
+}
+
+# 小写转换
+to_lower() {
+    tr '[:upper:]' '[:lower:]'
 }
 
 install_pkg() {
@@ -171,9 +177,34 @@ check_service_mgr() {
     return 1
 }
 
+# https://github.com/HenrikBengtsson/x86-64-level
+# 获取当前 AMD64 CPU 支持的 GOAMD64 等级
+get_cpu_level() {
+    local cpu_flags flag
+
+    cpu_flags="$(awk -F ':' '/^flags[[:space:]]*:/{print $2; exit}' /proc/cpuinfo)"
+
+    # GOAMD64 v2
+    for flag in cx16 lahf_lm popcnt pni ssse3 sse4_1 sse4_2; do
+        case " $cpu_flags " in
+        *" $flag "*) ;;
+        *) echo 1 && return ;;
+        esac
+    done
+
+    # GOAMD64 v3
+    for flag in avx avx2 bmi1 bmi2 f16c fma abm movbe xsave; do
+        case " $cpu_flags " in
+        *" $flag "*) ;;
+        *) echo 2 && return ;;
+        esac
+    done
+
+    echo 3
+}
+
 ## 脚本入口
 
-# 检查 root
 if [ "$EUID" -ne 0 ]; then
     die "请使用 root 用户运行此脚本."
 fi
@@ -181,3 +212,23 @@ fi
 if ! check_service_mgr; then
     die "此系统缺少 rc-service 或 systemctl"
 fi
+
+case "$(to_lower <<< "$OS_ARCH")" in
+x86_64 | amd64)
+    MIHOMO_ARCH="amd64-v$(get_cpu_level)"
+    YQ_ARCH="amd64"
+    ;;
+aarch64 | arm64)
+    MIHOMO_ARCH="arm64"
+    YQ_ARCH="arm64"
+    ;;
+s390x)
+    MIHOMO_ARCH="s390x"
+    YQ_ARCH="s390x"
+    ;;
+*)
+    die "不支持的 CPU 架构: $OS_ARCH"
+    ;;
+esac
+
+echo "$MIHOMO_ARCH $YQ_ARCH"
