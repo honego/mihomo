@@ -161,9 +161,23 @@ curl() {
     done
 }
 
+check_service_mgr() {
+    local svc_mgr
+
+    for svc_mgr in "rc-service" "systemctl"; do
+        is_have_cmd "$svc_mgr" && return
+    done
+
+    return 1
+}
+
 ## 脚本入口
 
 # 检查 root
 if [ "$EUID" -ne 0 ]; then
     die "请使用 root 用户运行此脚本."
+fi
+
+if ! check_service_mgr; then
+    die "此系统缺少 rc-service 或 systemctl"
 fi
