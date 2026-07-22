@@ -2,6 +2,7 @@
 
 set -eE
 
+## 颜色函数
 _red() {
     printf "\033[31m%b\033[0m\n" "$*"
 }
@@ -41,9 +42,89 @@ _warn_msg() {
     _alert_msg "警告" "$*"
 }
 
+## 全局参数
+GITHUB_REPO="MetaCubeX/mihomo"
+# shellcheck disable=SC2034
+GITHUB_REPO_URL="https://github.com/$GITHUB_REPO"
+PROJECT="${GITHUB_REPO##*/}"
+PROJECT_DIR="/etc/$PROJECT"
+# shellcheck disable=SC2034
+PROJECT_BIN="$PROJECT_DIR/bin/$PROJECT"
+
 die() {
     _err_msg "$(_red "$*")" >&2
     exit 1
+}
+
+get_cmd_path() {
+    # arch 云镜像不带 which
+    # command -v 包括脚本里面的方法
+    # ash 无效
+    type -f -p "$1"
+}
+
+is_have_cmd() {
+    get_cmd_path "$1" > /dev/null 2>&1
+}
+
+install_pkg() {
+    find_pkg_mgr() {
+        # 启用 set -u 报错
+        [ -n "$pkg_mgr" ] && return
+
+        # 查找方法 1: 通过 ID / ID_LIKE
+        # 因为可能装了多种包管理器
+        if [ -f /etc/os-release ]; then
+            # https://github.com/chef/os_release
+            for id in $(
+                # shellcheck disable=SC1091
+                . /etc/os-release
+                echo "$ID $ID_LIKE"
+            ); do
+                case "$id" in
+                alpine) pkg_mgr=apk ;;
+                centos | fedora | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
+                debian | ubuntu) pkg_mgr=apt-get ;;
+                esac
+                [ -n "$pkg_mgr" ] && return
+            done
+        fi
+
+        # 查找方法 2
+        for mgr in apk apt-get dnf yum; do
+            is_have_cmd "$mgr" && pkg_mgr="$mgr" && return
+        done
+
+        return 1
+    }
+
+    add_pkg() {
+        local pkg
+
+        pkg="$1"
+
+        case "$pkg_mgr" in
+        apk)
+            apk add --no-cache "$pkg"
+            ;;
+        apt-get)
+            [ -z "$apt_updated" ] && apt-get update && apt_updated=1
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$pkg"
+            ;;
+        dnf | yum)
+            eval "$pkg_mgr" install -y "$pkg"
+            ;;
+        esac
+    }
+
+    for cmd in "$@"; do
+        if ! is_have_cmd "$cmd"; then
+            if ! find_pkg_mgr; then
+                die "找不到兼容的包管理器 请手动安装 $cmd."
+            fi
+            add_pkg "$cmd"
+        fi
+    done >&2
 }
 
 curl() {
@@ -66,18 +147,7 @@ curl() {
     done
 }
 
-get_cmd_path() {
-    # arch 云镜像不带 which
-    # command -v 包括脚本里面的方法
-    # ash 无效
-    type -f -p "$1"
-}
-
-is_have_cmd() {
-    get_cmd_path "$1" > /dev/null 2>&1
-}
-
-## mihomo 安装脚本入口
+## 脚本入口
 
 # 检查 root
 if ((EUID != 0)); then
