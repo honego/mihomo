@@ -49,7 +49,10 @@ GITHUB_REPO_URL="https://github.com/$GITHUB_REPO"
 PROJECT="${GITHUB_REPO##*/}"
 PROJECT_DIR="/etc/$PROJECT"
 # shellcheck disable=SC2034
-PROJECT_BIN="$PROJECT_DIR/bin/$PROJECT"
+PROJECT_BIN="$PROJECT_DIR/bin"
+# shellcheck disable=SC2034
+SCRIPT_DIR="$PROJECT_DIR/sh"
+# shellcheck disable=SC2034
 
 die() {
     _err_msg "$(_red "$*")" >&2
@@ -130,15 +133,17 @@ install_pkg() {
 curl() {
     local rc
 
-    # 添加 -f --fail 不然 404 退出码也为 0
-    # 32位 cygwin 已停止更新 证书可能有问题 添加 --insecure
-    # centos7 curl 不支持 --retry-connrefused --retry-all-errors 因此手动 retry
-    for ((i = 1; i <= 5; i++)); do
-        if command curl --connect-timeout 10 --fail --insecure "$@"; then
+    is_have_cmd curl || install_pkg curl
+
+    # 添加 -f --fail 不然 404 退出码也为0
+    # 32位 cygwin 已停止更新, 证书可能有问题先添加 --insecure
+    # centos 7 curl 不支持 --retry-connrefused --retry-all-errors 因此手动 retry
+    for i in $(seq 5); do
+        if command curl --insecure --connect-timeout 10 -f "$@"; then
             return
         else
             rc="$?"
-            # 403 404 错误 或达到重试次数
+            # 403 404 错误, 或者达到重试次数
             if [ "$rc" -eq 22 ] || [ "$i" -eq 5 ]; then
                 return "$rc"
             fi
@@ -150,6 +155,6 @@ curl() {
 ## 脚本入口
 
 # 检查 root
-if ((EUID != 0)); then
+if [ "$EUID" -ne 0 ]; then
     die "请使用 root 用户运行此脚本."
 fi
